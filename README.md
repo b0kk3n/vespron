@@ -1,56 +1,84 @@
-# Welcome to your Expo app 👋
+# Vespron
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A calm, ADHD-friendly app for managing the mental load of keeping a home running.
 
-## Get started
+## What it is
 
-1. Install dependencies
+Vespron tracks the rhythm of cleaning chores around your home so you don't have to. Instead of nagging you with a never-ending to-do list, it tells you what genuinely needs attention right now — and respects when nothing does.
 
-   ```bash
-   npm install
-   ```
+Built for people who've tried Todoist, Tody, and every other productivity app, and quietly given up after three weeks.
 
-2. Start the app
+## Philosophy
 
-   ```bash
-   npx expo start
-   ```
+- **Offload, don't add** — reduces mental load, never creates more
+- **Flexible, not strict** — life happens, soft deadlines, no nagging
+- **Adaptive** — learns your patterns, asks before adjusting
+- **"All caught up" is a real state** — the app never manufactures work
 
-In the output, you'll find options to open the app in a
+## Core features (MVP)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Chores organized by room, each with a custom interval
+- Freshness scores — room health at a glance, decays only in the final stretch
+- **"I have X minutes"** — surfaces only the chores that fit your time and need attention
+- Daily briefing — opinionated, low-volume entry point
+- Checklists — curated lists for scenarios like "Guests coming" or "Sunday reset"
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Status
 
-## Get a fresh project
+Early development. Working toward MVP, not yet on App Store or Play Store.
 
-When you're ready, run:
+## Stack
 
-```bash
-npm run reset-project
+- [Expo](https://expo.dev/) (React Native + TypeScript)
+- [Expo Router](https://docs.expo.dev/router/introduction/) — file-based navigation
+- [expo-sqlite](https://docs.expo.dev/versions/latest/sdk/sqlite/) — local-first storage
+- UUIDs everywhere, soft deletes, ISO 8601 timestamps — built for future cloud sync without a rewrite
+
+## Project structure
+
+```text
+src/
+├── app/                    Expo Router screens
+│   ├── _layout.tsx        Root layout (providers, DB init)
+│   └── (tabs)/            Bottom tab group
+│       ├── _layout.tsx    Tab bar
+│       ├── index.tsx      Home
+│       ├── rooms.tsx
+│       ├── checklists.tsx
+│       └── settings.tsx
+├── components/             Reusable UI
+├── lib/
+│   ├── db/                Single data-access layer
+│   └── freshness/         Freshness calculation utilities
+└── theme/                  Design tokens (colors, spacing, typography)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Architecture rules
 
-### Other setup steps
+- All DB access goes through `src/lib/db/client.ts`. No SQL anywhere else.
+- All records use UUIDs, not auto-increment IDs.
+- All owned tables have `created_at`, `updated_at`, and `deleted_at` columns (ISO 8601 strings).
+- Soft deletes only — never `DELETE FROM`.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+These rules exist so a future cloud sync is a refactor, not a rewrite.
 
-## Learn more
+## Development
 
-To learn more about developing your project with Expo, look at the following resources:
+Requirements: Node.js 20+, Expo Go on your phone (or iOS Simulator / Android Emulator).
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm install
+npx expo start --tunnel
+```
 
-## Join the community
+Scan the QR code with the Camera app (iOS) or from within Expo Go (Android).
 
-Join our community of developers creating universal apps.
+> **Note:** SQLite doesn't run in web preview. Use a phone or simulator for anything beyond the initial scaffold.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Inspiration
+
+Vespron is the public version of Aether — a Raspberry Pi-based home assistant I built for myself. Aether works great, but it lives on my Pi, so it only helps me. Vespron is the same philosophy in a form anyone can install on their phone.
+
+## License
+
+TBD.
