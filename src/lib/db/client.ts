@@ -2,12 +2,12 @@ import * as SQLite from "expo-sqlite";
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
 import {
-    Checklist,
-    ChecklistChore,
-    Chore,
-    Completion,
-    DDL,
-    Room,
+  Checklist,
+  ChecklistChore,
+  Chore,
+  Completion,
+  DDL,
+  Room,
 } from "./schema";
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -248,4 +248,27 @@ export async function addChoreToChecklist(
     ],
   );
   return entry;
+}
+export interface ChoreWithFreshness extends Chore {
+  room_name: string;
+  room_icon: string | null;
+  last_completed_at: string | null;
+}
+
+export async function getChoresWithFreshness(): Promise<ChoreWithFreshness[]> {
+  return getDb().getAllAsync<ChoreWithFreshness>(`
+    SELECT
+      c.*,
+      r.name  AS room_name,
+      r.icon  AS room_icon,
+      (
+        SELECT completed_at FROM completions
+        WHERE chore_id = c.id AND deleted_at IS NULL
+        ORDER BY completed_at DESC LIMIT 1
+      ) AS last_completed_at
+    FROM chores c
+    JOIN rooms r ON r.id = c.room_id
+    WHERE c.deleted_at IS NULL AND r.deleted_at IS NULL
+    ORDER BY r.sort_order ASC, c.sort_order ASC
+  `);
 }
