@@ -1,0 +1,236 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  FlatList, Modal, Pressable, SectionList,
+  StyleSheet, Text, View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { colors } from "../../theme/colors";
+import { typography } from "../../theme/typography";
+import { spacing } from "../../theme/spacing";
+import {
+  getChecklistChores,
+  getChoresNotInChecklist,
+  addChoreToChecklist,
+  createCompletion,
+  type ChoreWithFreshness,
+  type ChorePickerItem,
+} from "../../lib/db/client";
+import { ChoreRow } from "../../components/chore-row";
+
+interface PickerSection {
+  room_name: string;
+  room_icon: string | null;
+  data: ChorePickerItem[];
+}
+
+function groupPickerByRoom(chores: ChorePickerItem[]): PickerSection[] {
+  const map = new Map<string, PickerSection>();
+  for (const c of chores) {
+    if (!map.has(c.room_name)) {
+      map.set(c.room_name, { room_name: c.room_name, room_icon: c.room_icon, data: [] });
+    }
+    map.get(c.room_name)!.data.push(c);
+  }
+  return Array.from(map.values());
+}
+
+export default function ChecklistDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const [chores, setChores] = useState<ChoreWithFreshness[]>([]);
+  const [checklistName, setChecklistName] = useState("");
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerSections, setPickerSections] = useState<PickerSection[]>([]);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    const data = await getChecklistChores(id);
+    setChores(data);
+    // Derive name from first chore if not yet set — checklists
+    // don't carry their name in ChoreWithFreshness, so we fetch
+    // it separately only on first load.
+  }, [id]);
+
+  // Fetch checklist name once
+  useEffect(() => {
+    if (!id) return;
+    import("../../lib/db/client").then(({ getChecklists }) =>
+      getChecklists().then((all) => {
+        const found = all.find((c) => c.id === id);
+        if (found) setChecklistName(found.name);
+      })
+    );
+  }, [id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleComplete = useCallback(async (choreId: string) => {
+    await createCompletion(choreId);
+    load();
+  }, [load]);
+
+  const openPicker = useCallback(async () => {
+    if (!id) return;
+    const available = await getChoresNotInChecklist(id);
+    setPickerSections(groupPickerByRoom(available));
+    setPickerVisible(true);
+  }, [id]);
+
+  const handleAddChore = useCallback(async (chore: ChorePickerItem) => {
+    if (!id) return;
+    await addChoreToChecklist(id, chore.id, chores.length);
+    setPickerVisible(false);
+    load();
+  }, [id, chores.length, load]);
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>‹ Checklists</Text>
+        </Pressable>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>{checklistName}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
+            onPress={openPicker}
+          >
+            <Text style={styles.addBtnText}>+ Add chore</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {chores.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyText}>No chores in this checklist yet.</Text>
+          <Text style={styles.emptyHint}>Tap "+ Add chore" to get started.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={chores}
+          keyExtractor={(c) => c.id}
+          renderItem={({ item }) => (
+            <ChoreRow chore={item} onComplete={handleComplete} />
+          )}
+          style={styles.card}
+        />
+      )}
+
+      {/* Chore picker modal */}
+      <Modal
+        visible={pickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <SafeAreaView style={styles.modal} edges={["top"]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add a chore</Text>
+            <Pressable onPress={() => setPickerVisible(false)}>
+              <Text style={styles.modalClose}>Done</Text>
+            </Pressable>
+          </View>
+
+          {pickerSections.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>All chores are already in this checklist.</Text>
+            </View>
+          ) : (
+            <SectionList
+              sections={pickerSections}
+              keyExtractor={(c) => c.id}
+              contentContainerStyle={styles.pickerList}
+              renderSectionHeader={({ section }) => (
+                <View style={styles.sectionHeader}>
+                  {section.room_icon ? (
+                    <Text style={styles.sectionIcon}>{section.room_icon}</Text>
+                  ) : null}
+                  <Text style={styles.sectionTitle}>{section.room_name}</Text>
+                </View>
+              )}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={({ pressed }) => [styles.pickerRow, pressed && styles.pickerRowPressed]}
+                  onPress={() => handleAddChore(item)}
+                >
+                  <Text style={styles.pickerName}>{item.name}</Text>
+                  <Text style={styles.pickerAdd}>+</Text>
+                </Pressable>
+              )}
+              ItemSeparatorComponent={() => <View style={styles.separator} />}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.backgroundSecondary },
+  header: { paddingHorizontal: spacing.base, paddingTop: spacing.sm, paddingBottom: spacing.base, gap: spacing.xs },
+  backBtn: { alignSelf: "flex-start" },
+  backText: { ...typography.body, color: colors.textInfo },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  title: { ...typography.pageTitle, color: colors.textPrimary },
+  addBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.backgroundInfo,
+    borderWidth: 1,
+    borderColor: colors.borderInfo,
+  },
+  addBtnPressed: { opacity: 0.7 },
+  addBtnText: { ...typography.caption, color: colors.textInfo },
+  card: {
+    marginHorizontal: spacing.base,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.borderTertiary,
+  },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  emptyText: { ...typography.body, color: colors.textTertiary },
+  emptyHint: { ...typography.caption, color: colors.textTertiary },
+  modal: { flex: 1, backgroundColor: colors.backgroundPrimary },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.base,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderTertiary,
+  },
+  modalTitle: { ...typography.pageTitle, color: colors.textPrimary },
+  modalClose: { ...typography.body, color: colors.textInfo },
+  pickerList: { paddingBottom: spacing.xxl },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  sectionIcon: { fontSize: 14 },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  pickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.backgroundPrimary,
+  },
+  pickerRowPressed: { backgroundColor: colors.backgroundSecondary },
+  pickerName: { flex: 1, ...typography.body, color: colors.textPrimary },
+  pickerAdd: { fontSize: 20, color: colors.textInfo },
+  separator: { height: 1, backgroundColor: colors.borderTertiary, marginLeft: spacing.base },
+});

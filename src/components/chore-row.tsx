@@ -9,9 +9,10 @@ import { FreshnessPill } from "./freshness-pill";
 interface Props {
   chore: ChoreWithFreshness;
   onComplete: (id: string) => void;
+  onEdit?: (id: string) => void;
 }
 
-export function ChoreRow({ chore, onComplete }: Props) {
+export function ChoreRow({ chore, onComplete, onEdit }: Props) {
   const { status } = getFreshness(
     chore.freshness_days,
     chore.last_completed_at,
@@ -19,7 +20,11 @@ export function ChoreRow({ chore, onComplete }: Props) {
 
   return (
     <View style={styles.row}>
-      <View style={styles.info}>
+      <Pressable
+        style={styles.info}
+        onPress={onEdit ? () => onEdit(chore.id) : undefined}
+        accessibilityLabel={onEdit ? `Edit ${chore.name}` : undefined}
+      >
         <Text style={styles.name}>{chore.name}</Text>
         <View style={styles.meta}>
           {chore.duration_minutes !== null && (
@@ -27,7 +32,7 @@ export function ChoreRow({ chore, onComplete }: Props) {
           )}
           <FreshnessPill status={status} />
         </View>
-      </View>
+      </Pressable>
       <Pressable
         style={({ pressed }) => [
           styles.doneBtn,

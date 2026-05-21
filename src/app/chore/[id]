@@ -1,0 +1,209 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  Alert, KeyboardAvoidingView, Platform,
+  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { colors } from "../../theme/colors";
+import { typography } from "../../theme/typography";
+import { spacing } from "../../theme/spacing";
+import {
+  getChoreById,
+  createChore,
+  updateChore,
+  deleteChore,
+} from "../../lib/db/client";
+
+export default function ChoreFormScreen() {
+  const { id, room_id } = useLocalSearchParams<{ id: string; room_id?: string }>();
+  const router = useRouter();
+  const isNew = id === "new";
+
+  const [name, setName] = useState("");
+  const [duration, setDuration] = useState("");
+  const [freshnessDays, setFreshnessDays] = useState("");
+
+  useEffect(() => {
+    if (isNew) return;
+    getChoreById(id).then((chore) => {
+      if (!chore) return;
+      setName(chore.name);
+      setDuration(chore.duration_minutes?.toString() ?? "");
+      setFreshnessDays(chore.freshness_days?.toString() ?? "");
+    });
+  }, [id, isNew]);
+
+  const handleSave = useCallback(async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      Alert.alert("Name required", "Please enter a name for this chore.");
+      return;
+    }
+
+    const durationVal = duration.trim() ? parseInt(duration, 10) : null;
+    const freshnessVal = freshnessDays.trim() ? parseInt(freshnessDays, 10) : null;
+
+    if (durationVal !== null && (isNaN(durationVal) || durationVal < 1)) {
+      Alert.alert("Invalid duration", "Duration must be a positive number.");
+      return;
+    }
+    if (freshnessVal !== null && (isNaN(freshnessVal) || freshnessVal < 1)) {
+      Alert.alert("Invalid frequency", "Frequency must be a positive number.");
+      return;
+    }
+
+    if (isNew) {
+      if (!room_id) return;
+      await createChore(room_id, trimmed, durationVal, freshnessVal);
+    } else {
+      await updateChore(id, {
+        name: trimmed,
+        duration_minutes: durationVal,
+        freshness_days: freshnessVal,
+      });
+    }
+
+    router.back();
+  }, [name, duration, freshnessDays, isNew, id, room_id, router]);
+
+  const handleDelete = useCallback(() => {
+    Alert.alert(
+      "Delete chore",
+      `Remove "${name}" permanently?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteChore(id);
+            router.back();
+          },
+        },
+      ]
+    );
+  }, [id, name, router]);
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Text style={styles.backText}>‹ Back</Text>
+          </Pressable>
+          <Text style={styles.title}>{isNew ? "New chore" : "Edit chore"}</Text>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.form}>
+          <View style={styles.field}>
+            <Text style={styles.label}>Name</Text>
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Wipe counters"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus={isNew}
+              returnKeyType="next"
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Duration (minutes)</Text>
+            <Text style={styles.hint}>Optional — shown as a time estimate</Text>
+            <TextInput
+              style={styles.input}
+              value={duration}
+              onChangeText={setDuration}
+              placeholder="e.g. 10"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="number-pad"
+              returnKeyType="next"
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Remind every X days</Text>
+            <Text style={styles.hint}>Optional — drives the freshness indicator</Text>
+            <TextInput
+              style={styles.input}
+              value={freshnessDays}
+              onChangeText={setFreshnessDays}
+              placeholder="e.g. 7"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
+            />
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.saveBtn, pressed && styles.saveBtnPressed]}
+            onPress={handleSave}
+          >
+            <Text style={styles.saveBtnText}>{isNew ? "Add chore" : "Save changes"}</Text>
+          </Pressable>
+
+          {!isNew && (
+            <Pressable
+              style={({ pressed }) => [styles.deleteBtn, pressed && styles.deleteBtnPressed]}
+              onPress={handleDelete}
+            >
+              <Text style={styles.deleteBtnText}>Delete chore</Text>
+            </Pressable>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  container: { flex: 1, backgroundColor: colors.backgroundSecondary },
+  header: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.base,
+    gap: spacing.xs,
+  },
+  backBtn: { alignSelf: "flex-start" },
+  backText: { ...typography.body, color: colors.textInfo },
+  title: { ...typography.pageTitle, color: colors.textPrimary },
+  form: { padding: spacing.base, gap: spacing.lg },
+  field: { gap: spacing.xs },
+  label: { ...typography.cardTitle, color: colors.textPrimary },
+  hint: { ...typography.caption, color: colors.textTertiary },
+  input: {
+    backgroundColor: colors.backgroundPrimary,
+    borderWidth: 1,
+    borderColor: colors.borderSecondary,
+    borderRadius: 10,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  saveBtn: {
+    backgroundColor: colors.textInfo,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    marginTop: spacing.sm,
+  },
+  saveBtnPressed: { opacity: 0.8 },
+  saveBtnText: { ...typography.cardTitle, color: colors.backgroundPrimary },
+  deleteBtn: {
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.coralFill,
+  },
+  deleteBtnPressed: { opacity: 0.7 },
+  deleteBtnText: { ...typography.cardTitle, color: colors.coralText },
+});

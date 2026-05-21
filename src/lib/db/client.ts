@@ -272,3 +272,116 @@ export async function getChoresWithFreshness(): Promise<ChoreWithFreshness[]> {
     ORDER BY r.sort_order ASC, c.sort_order ASC
   `);
 }
+export interface RoomWithChoreCount extends Room {
+  total_chores: number;
+}
+
+export async function getRoomsWithChoreCount(): Promise<RoomWithChoreCount[]> {
+  return getDb().getAllAsync<RoomWithChoreCount>(`
+    SELECT r.*, COUNT(c.id) AS total_chores
+    FROM rooms r
+    LEFT JOIN chores c ON c.room_id = r.id AND c.deleted_at IS NULL
+    WHERE r.deleted_at IS NULL
+    GROUP BY r.id
+    ORDER BY r.sort_order ASC
+  `);
+}
+
+export async function getChoresWithFreshnessByRoom(
+  room_id: string,
+): Promise<ChoreWithFreshness[]> {
+  return getDb().getAllAsync<ChoreWithFreshness>(
+    `
+    SELECT
+      c.*,
+      r.name  AS room_name,
+      r.icon  AS room_icon,
+      (
+        SELECT completed_at FROM completions
+        WHERE chore_id = c.id AND deleted_at IS NULL
+        ORDER BY completed_at DESC LIMIT 1
+      ) AS last_completed_at
+    FROM chores c
+    JOIN rooms r ON r.id = c.room_id
+    WHERE c.deleted_at IS NULL AND c.room_id = ?
+    ORDER BY c.sort_order ASC
+  `,
+    [room_id],
+  );
+}
+export interface ChecklistWithChoreCount extends Checklist {
+  total_chores: number;
+}
+
+export async function getChecklistsWithChoreCount(): Promise<
+  ChecklistWithChoreCount[]
+> {
+  return getDb().getAllAsync<ChecklistWithChoreCount>(`
+    SELECT cl.*, COUNT(cc.id) AS total_chores
+    FROM checklists cl
+    LEFT JOIN checklist_chores cc
+      ON cc.checklist_id = cl.id AND cc.deleted_at IS NULL
+    WHERE cl.deleted_at IS NULL
+    GROUP BY cl.id
+    ORDER BY cl.created_at ASC
+  `);
+}
+
+export async function getChecklistChores(
+  checklist_id: string,
+): Promise<ChoreWithFreshness[]> {
+  return getDb().getAllAsync<ChoreWithFreshness>(
+    `
+    SELECT
+      c.*,
+      r.name AS room_name,
+      r.icon AS room_icon,
+      (
+        SELECT completed_at FROM completions
+        WHERE chore_id = c.id AND deleted_at IS NULL
+        ORDER BY completed_at DESC LIMIT 1
+      ) AS last_completed_at
+    FROM checklist_chores cc
+    JOIN chores c ON c.id = cc.chore_id
+    JOIN rooms r ON r.id = c.room_id
+    WHERE cc.checklist_id = ?
+      AND cc.deleted_at IS NULL
+      AND c.deleted_at IS NULL
+    ORDER BY cc.sort_order ASC
+  `,
+    [checklist_id],
+  );
+}
+
+export interface ChorePickerItem {
+  id: string;
+  name: string;
+  room_name: string;
+  room_icon: string | null;
+}
+
+export async function getChoresNotInChecklist(
+  checklist_id: string,
+): Promise<ChorePickerItem[]> {
+  return getDb().getAllAsync<ChorePickerItem>(
+    `
+    SELECT c.id, c.name, r.name AS room_name, r.icon AS room_icon
+    FROM chores c
+    JOIN rooms r ON r.id = c.room_id
+    WHERE c.deleted_at IS NULL
+      AND r.deleted_at IS NULL
+      AND c.id NOT IN (
+        SELECT chore_id FROM checklist_chores
+        WHERE checklist_id = ? AND deleted_at IS NULL
+      )
+    ORDER BY r.sort_order ASC, c.sort_order ASC
+  `,
+    [checklist_id],
+  );
+}
+export async function getChoreById(id: string): Promise<Chore | null> {
+  return getDb().getFirstAsync<Chore>(
+    "SELECT * FROM chores WHERE id = ? AND deleted_at IS NULL",
+    [id],
+  );
+}
